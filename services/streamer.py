@@ -66,6 +66,8 @@ async def stream_audio_pipe(
     """
     fmt_config = FORMAT_MAPPING.get(output_format.lower(), FORMAT_MAPPING["mp3"])
     
+    from services.youtube import COOKIE_FILE
+
     # 1. yt-dlp command to stream raw audio to stdout
     ytdl_cmd = [
         YTDL_PATH,
@@ -74,9 +76,13 @@ async def stream_audio_pipe(
         "--no-warnings",
         "--no-playlist",
         "--output", "-",
-        "--extractor-args", "youtube:player_client=android,web",
-        youtube_url
+        "--extractor-args", "youtube:player_client=ios,android",
     ]
+
+    if COOKIE_FILE:
+        ytdl_cmd.extend(["--cookies", COOKIE_FILE])
+
+    ytdl_cmd.append(youtube_url)
 
     # 2. ffmpeg command to read from stdin (pipe:0) and transcode to stdout (pipe:1)
     ffmpeg_cmd = [

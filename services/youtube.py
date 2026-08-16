@@ -4,10 +4,40 @@ from typing import Dict, Any, List, Optional, Tuple
 import yt_dlp
 from cachetools import TTLCache
 
+import os
+import base64
+
 # Cache for video info & search results (TTL: 1 hour)
 _info_cache = TTLCache(maxsize=1000, ttl=3600)
 _search_cache = TTLCache(maxsize=500, ttl=1800)
 _playlist_cache = TTLCache(maxsize=200, ttl=1800)
+
+def _get_cookiefile_path() -> Optional[str]:
+    cookie_env = os.getenv("YOUTUBE_COOKIES") or os.getenv("YOUTUBE_COOKIES_BASE64")
+    if cookie_env:
+        cookie_path = "/tmp/youtube_cookies.txt" if os.path.exists("/tmp") else "youtube_cookies.txt"
+        try:
+            # Check if base64 encoded
+            try:
+                decoded = base64.b64decode(cookie_env).decode('utf-8')
+                if "# Netscape HTTP Cookie File" in decoded or "youtube.com" in decoded:
+                    cookie_content = decoded
+                else:
+                    cookie_content = cookie_env
+            except Exception:
+                cookie_content = cookie_env
+            
+            with open(cookie_path, "w", encoding="utf-8") as f:
+                f.write(cookie_content)
+            return cookie_path
+        except Exception:
+            pass
+
+    if os.path.exists("cookies.txt"):
+        return "cookies.txt"
+    return None
+
+COOKIE_FILE = _get_cookiefile_path()
 
 YTDL_OPTS = {
     'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best',
@@ -21,15 +51,19 @@ YTDL_OPTS = {
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'web', 'mweb'],
+            'player_client': ['ios', 'android', 'mweb'],
+            'player_skip': ['configs', 'webpage'],
         }
     },
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
     },
 }
+
+if COOKIE_FILE:
+    YTDL_OPTS['cookiefile'] = COOKIE_FILE
 
 def clean_youtube_url(url_or_id: str) -> str:
     url_or_id = url_or_id.strip()
