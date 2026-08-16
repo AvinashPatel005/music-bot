@@ -161,9 +161,7 @@ class MusicBot(commands.Bot):
     async def setup_hook(self):
         logger.info("Initializing MongoDB connection...")
         await pl_mgr.init_db()
-        logger.info("Syncing slash command tree...")
-        await self.tree.sync()
-        logger.info("Slash command tree synced successfully.")
+        logger.info("MongoDB initialized.")
 
     async def on_ready(self):
         logger.info(f"Bot logged in as: {self.user} (ID: {self.user.id})")
@@ -173,14 +171,22 @@ class MusicBot(commands.Bot):
                 name="YouTube & Spotify | /play"
             )
         )
-        # Instantly sync commands to all joined Discord guilds for immediate availability
-        for guild in self.guilds:
-            try:
-                self.tree.copy_global_to(guild=guild)
-                await self.tree.sync(guild=guild)
-                logger.info(f"Instantly synced all slash commands to guild: {guild.name} ({guild.id})")
-            except Exception as e:
-                logger.warning(f"Could not sync to guild {guild.id}: {e}")
+        # Background sync to avoid blocking startup on Discord 429 rate limits
+        asyncio.create_task(self._sync_commands_safely())
+
+    async def _sync_commands_safely(self):
+        try:
+            for guild in self.guilds:
+                try:
+                    self.tree.copy_global_to(guild=guild)
+                    await self.tree.sync(guild=guild)
+                    logger.info(f"Synced slash commands to guild: {guild.name}")
+                except Exception as e:
+                    logger.debug(f"Guild sync notice ({guild.name}): {e}")
+            await self.tree.sync()
+            logger.info("Global slash command tree synced.")
+        except Exception as e:
+            logger.warning(f"Command sync notice: {e}")
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         """

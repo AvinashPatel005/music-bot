@@ -35,6 +35,7 @@ class Song:
     thumbnail: str
     requester: discord.User | discord.Member
     direct_audio_url: Optional[str] = None
+    http_headers: Optional[Dict[str, str]] = None
     search_query: Optional[str] = None
     source_type: str = "youtube"
 
@@ -91,6 +92,7 @@ class Song:
             thumbnail=info.get("thumbnail", ""),
             requester=requester,
             direct_audio_url=info.get("direct_audio_url"),
+            http_headers=info.get("http_headers"),
             source_type="youtube"
         )
 
@@ -155,6 +157,78 @@ class Song:
                 source_type="spotify"
             ))
         return data, songs
+
+
+import subprocess
+
+class PipedAudioSource(discord.AudioSource):
+    """
+    Pipes yt-dlp direct output into ffmpeg for real-time 48kHz stereo PCM streaming.
+    Completely eliminates YouTube 403 Forbidden errors and direct stream expiration.
+    """
+    def __init__(self, ytdl_proc: subprocess.Popen, ffmpeg_proc: subprocess.Popen):
+        self._ytdl_proc = ytdl_proc
+        self._ffmpeg_proc = ffmpeg_proc
+        self._stdout = ffmpeg_proc.stdout
+
+    @classmethod
+    def create(cls, url: str) -> "PipedAudioSource":
+        from services.youtube import COOKIE_FILE
+        ytdl_cmd = [
+            YTDL_PATH,
+            "--extractor-args", "youtube:player_client=android_vr,android",
+            "--format", "bestaudio/best",
+            "--quiet",
+            "--no-warnings",
+            "-o", "-",
+            url
+        ]
+        if COOKIE_FILE:
+            ytdl_cmd.extend(["--cookies", COOKIE_FILE])
+
+        ffmpeg_cmd = [
+            FFMPEG_PATH,
+            "-hide_banner",
+            "-loglevel", "error",
+            "-i", "pipe:0",
+            "-f", "s16le",
+            "-ar", "48000",
+            "-ac", "2",
+            "pipe:1"
+        ]
+
+        ytdl_proc = subprocess.Popen(
+            ytdl_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
+
+        ffmpeg_proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=ytdl_proc.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
+        if ytdl_proc.stdout:
+            ytdl_proc.stdout.close()
+
+        return cls(ytdl_proc, ffmpeg_proc)
+
+    def read(self) -> bytes:
+        ret = self._stdout.read(3840)
+        if len(ret) != 3840:
+            return b""
+        return ret
+
+    def cleanup(self):
+        try:
+            self._ffmpeg_proc.kill()
+        except Exception:
+            pass
+        try:
+            self._ytdl_proc.kill()
+        except Exception:
+            pass
 
 
 class GuildMusicPlayer:
@@ -266,10 +340,15 @@ class GuildMusicPlayer:
             await self.voice_client.disconnect(force=True)
             self.voice_client = None
 
-    def _create_audio_source(self, stream_url: str) -> discord.AudioSource:
+    def _create_audio_source(self, song: Song) -> discord.AudioSource:
+        headers_str = "".join(f"{k}: {v}\r\n" for k, v in (song.http_headers or {}).items())
+        before_opts = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+        if headers_str:
+            before_opts += f' -headers "{headers_str}"'
+
         raw_source = discord.FFmpegPCMAudio(
-            stream_url,
-            before_options=FFMPEG_BEFORE_OPTS,
+            song.direct_audio_url,
+            before_options=before_opts,
             options=FFMPEG_AUDIO_OPTS,
             executable=FFMPEG_PATH
         )
@@ -304,8 +383,9 @@ class GuildMusicPlayer:
             self.current = next_song
 
             try:
+                # If song has no direct_audio_url or headers, resolve it
                 if not next_song.direct_audio_url:
-                    query_target = next_song.search_query if next_song.search_query else next_song.webpage_url
+                    query_target = next_song.search_query if next_song.search_query else (next_song.webpage_url or next_song.title)
                     if next_song.source_type == "spotify" or next_song.search_query:
                         results = await search_youtube(next_song.search_query, limit=1)
                         if not results:
@@ -315,10 +395,11 @@ class GuildMusicPlayer:
                         info = await get_video_info(next_song.webpage_url)
                     
                     next_song.direct_audio_url = info.get("direct_audio_url")
+                    next_song.http_headers = info.get("http_headers")
                     if not next_song.thumbnail and info.get("thumbnail"):
                         next_song.thumbnail = info.get("thumbnail")
 
-                source = self._create_audio_source(next_song.direct_audio_url)
+                source = self._create_audio_source(next_song)
 
                 def _after_play(error):
                     if error:
