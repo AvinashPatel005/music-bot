@@ -50,7 +50,7 @@ def get_cookiefile_path() -> Optional[str]:
 
 COOKIE_FILE = get_cookiefile_path()
 
-# YTDL options with JS challenge solver and resilient format selector
+# YTDL options with JS challenge solver, resilient format selector, and client fallbacks
 YTDL_OPTS: Dict[str, Any] = {
     'format': 'bestaudio/ba/b/best',
     'format_sort': ['hasaud', 'acodec', 'abr'],
@@ -62,6 +62,11 @@ YTDL_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'geo_bypass': True,
     'remote_components': ['ejs:github'],
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android_vr', 'mweb', 'android', 'tv', 'web']
+        }
+    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -71,13 +76,6 @@ YTDL_OPTS: Dict[str, Any] = {
 
 if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
-else:
-    # When no cookies are provided on cloud IPs, use mobile and VR endpoints
-    YTDL_OPTS['extractor_args'] = {
-        'youtube': {
-            'player_client': ['android_vr', 'android', 'ios', 'web']
-        }
-    }
 
 # Dedicated options for ytsearch queries
 SEARCH_OPTS: Dict[str, Any] = {
@@ -88,16 +86,15 @@ SEARCH_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'default_search': 'ytsearch',
     'remote_components': ['ejs:github'],
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android_vr', 'mweb', 'android', 'tv', 'web']
+        }
+    },
 }
 
 if COOKIE_FILE:
     SEARCH_OPTS['cookiefile'] = COOKIE_FILE
-else:
-    SEARCH_OPTS['extractor_args'] = {
-        'youtube': {
-            'player_client': ['android_vr', 'android', 'ios', 'web']
-        }
-    }
 
 import shutil
 import subprocess
@@ -117,19 +114,29 @@ def log_available_formats(url_or_id: str):
         shutil.which("yt-dlp") or "yt-dlp",
         "--list-formats",
         "--remote-components", "ejs:github",
+        "--extractor-args", "youtube:player_client=android_vr,mweb,android,tv,web",
     ]
     if COOKIE_FILE:
         cmd.extend(["--cookies", COOKIE_FILE])
-    else:
-        cmd.extend(["--extractor-args", "youtube:player_client=android_vr,android,ios,web"])
 
     cmd.append(clean_url)
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-        if res.stdout:
+        output = res.stdout or res.stderr or ""
+        if "audio only" in output or "audio" in output or "https" in output:
             logger.info("yt-dlp --list-formats for %s:\n%s", clean_url, res.stdout.strip())
-        elif res.stderr:
-            logger.warning("yt-dlp --list-formats stderr for %s:\n%s", clean_url, res.stderr.strip())
+        else:
+            # If cookies returned only storyboards, run fallback without cookies
+            fallback_cmd = [
+                shutil.which("yt-dlp") or "yt-dlp",
+                "--list-formats",
+                "--remote-components", "ejs:github",
+                "--extractor-args", "youtube:player_client=android_vr,mweb,android,tv,web",
+                clean_url
+            ]
+            f_res = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=20)
+            if f_res.stdout:
+                logger.info("yt-dlp --list-formats (fallback) for %s:\n%s", clean_url, f_res.stdout.strip())
     except Exception as e:
         logger.warning("Failed to execute yt-dlp --list-formats for %s: %s", clean_url, e)
 
@@ -138,11 +145,11 @@ def is_playlist(url: str) -> bool:
     return "playlist?list=" in url or "&list=" in url or "/sets/" in url
 
 def _extract_info_sync(url: str) -> Dict[str, Any]:
-    # Log available formats first so the format table appears in logs
+    # 1. Log list-formats first
     log_available_formats(url)
 
+    # 2. Try primary extraction
     opts = dict(YTDL_OPTS)
-    # Remove format constraint during metadata extraction so all formats are fetched cleanly
     opts.pop('format', None)
 
     try:
@@ -151,15 +158,44 @@ def _extract_info_sync(url: str) -> Dict[str, Any]:
             sanitized = ydl.sanitize_info(info)
             if sanitized:
                 fmts = sanitized.get("formats", [])
-                audio_fmts = [
-                    f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')} | vcodec: {f.get('vcodec')}"
-                    for f in fmts if f.get("acodec") and f.get("acodec") != "none"
-                ]
-                logger.info("Extracted %d total formats (%d with audio) for %s:\n  %s", len(fmts), len(audio_fmts), url, "\n  ".join(audio_fmts))
-            return sanitized
+                audio_fmts = [f for f in fmts if f.get("acodec") and f.get("acodec") != "none"]
+                if len(audio_fmts) > 0:
+                    audio_summary = [
+                        f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')}"
+                        for f in audio_fmts
+                    ]
+                    logger.info("Extracted %d total formats (%d with audio) for %s:\n  %s", len(fmts), len(audio_fmts), url, "\n  ".join(audio_summary))
+                    return sanitized
+                logger.warning("Primary extraction returned 0 audio formats. Trying mobile/VR client fallback...")
     except Exception as e:
-        logger.error("Failed to extract info for %s: %s", url, e)
-        raise
+        logger.warning("Primary extraction failed: %s. Trying mobile/VR client fallback...", e)
+
+    # 3. Fallback extraction without failing cookies
+    fallback_opts: Dict[str, Any] = {
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'skip_download': True,
+        'cachedir': False,
+        'geo_bypass': True,
+        'remote_components': ['ejs:github'],
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android_vr', 'mweb', 'android', 'tv', 'web']
+            }
+        }
+    }
+    with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+        sanitized = ydl.sanitize_info(info)
+        if sanitized:
+            fmts = sanitized.get("formats", [])
+            audio_fmts = [
+                f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')}"
+                for f in fmts if f.get("acodec") and f.get("acodec") != "none"
+            ]
+            logger.info("Fallback extraction succeeded with %d formats (%d with audio) for %s:\n  %s", len(fmts), len(audio_fmts), url, "\n  ".join(audio_fmts))
+        return sanitized
 
 async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     clean_url = clean_youtube_url(url_or_id)

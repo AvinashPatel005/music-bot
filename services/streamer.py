@@ -79,12 +79,11 @@ async def stream_audio_pipe(
         "--no-playlist",
         "--output", "-",
         "--remote-components", "ejs:github",
+        "--extractor-args", "youtube:player_client=android_vr,mweb,android,tv,web",
     ]
 
     if COOKIE_FILE:
         ytdl_cmd.extend(["--cookies", COOKIE_FILE])
-    else:
-        ytdl_cmd.extend(["--extractor-args", "youtube:player_client=android_vr,android,ios,web"])
 
     ytdl_cmd.append(youtube_url)
 
