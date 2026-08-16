@@ -166,10 +166,12 @@ class PipedAudioSource(discord.AudioSource):
     Pipes yt-dlp direct output into ffmpeg for real-time 48kHz stereo PCM streaming.
     Completely eliminates YouTube 403 Forbidden errors and direct stream expiration.
     """
-    def __init__(self, ytdl_proc: subprocess.Popen, ffmpeg_proc: subprocess.Popen):
+    def __init__(self, ytdl_proc: subprocess.Popen, ffmpeg_proc: subprocess.Popen, first_frame: bytes):
         self._ytdl_proc = ytdl_proc
         self._ffmpeg_proc = ffmpeg_proc
         self._stdout = ffmpeg_proc.stdout
+        self._first_frame = first_frame
+        self._first_read = True
 
     @classmethod
     def create(cls, url: str) -> "PipedAudioSource":
@@ -177,7 +179,9 @@ class PipedAudioSource(discord.AudioSource):
         ytdl_cmd = [
             YTDL_PATH,
             "--format", "ba/b",
+            "--quiet",
             "--no-warnings",
+            "--buffer-size", "64k",
             "-o", "-",
             url
         ]
@@ -210,13 +214,23 @@ class PipedAudioSource(discord.AudioSource):
         if ytdl_proc.stdout:
             ytdl_proc.stdout.close()
 
-        return cls(ytdl_proc, ffmpeg_proc)
+        # Pre-buffer the initial 48kHz audio frame so discord.py never encounters a premature EOF
+        first_frame = ffmpeg_proc.stdout.read(3840)
+        return cls(ytdl_proc, ffmpeg_proc, first_frame)
 
     def read(self) -> bytes:
-        ret = self._stdout.read(3840)
-        if len(ret) != 3840:
-            return b""
-        return ret
+        if self._first_read:
+            self._first_read = False
+            return self._first_frame
+        
+        # Accumulate pipe chunks until an exact 3840-byte 48kHz audio frame is formed
+        data = bytearray()
+        while len(data) < 3840:
+            chunk = self._stdout.read(3840 - len(data))
+            if not chunk:
+                return bytes(data) if data else b""
+            data.extend(chunk)
+        return bytes(data)
 
     def cleanup(self):
         try:
@@ -338,9 +352,10 @@ class GuildMusicPlayer:
             await self.voice_client.disconnect(force=True)
             self.voice_client = None
 
-    def _create_audio_source(self, song: Song) -> discord.AudioSource:
+    async def _create_audio_source(self, song: Song) -> discord.AudioSource:
         target_url = song.webpage_url or song.url
-        raw_source = PipedAudioSource.create(target_url)
+        loop = asyncio.get_running_loop()
+        raw_source = await loop.run_in_executor(None, PipedAudioSource.create, target_url)
         return discord.PCMVolumeTransformer(raw_source, volume=self.volume)
 
     async def play_next(self):
@@ -376,7 +391,7 @@ class GuildMusicPlayer:
                 if not next_song.direct_audio_url:
                     query_target = next_song.search_query if next_song.search_query else (next_song.webpage_url or next_song.title)
                     if next_song.source_type == "spotify" or next_song.search_query:
-                        results = await search_youtube(next_song.search_query, limit=1)
+                        results = await search_youtube(query_target, limit=1)
                         if not results:
                             raise ValueError(f"Could not find audio for: {next_song.title}")
                         info = await get_video_info(results[0]["url"])
@@ -388,7 +403,7 @@ class GuildMusicPlayer:
                     if not next_song.thumbnail and info.get("thumbnail"):
                         next_song.thumbnail = info.get("thumbnail")
 
-                source = self._create_audio_source(next_song)
+                source = await self._create_audio_source(next_song)
 
                 def _after_play(error):
                     if error:
