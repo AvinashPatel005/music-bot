@@ -138,17 +138,28 @@ def is_playlist(url: str) -> bool:
     return "playlist?list=" in url or "&list=" in url or "/sets/" in url
 
 def _extract_info_sync(url: str) -> Dict[str, Any]:
-    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
-        info = ydl.extract_info(url, download=False)
-        sanitized = ydl.sanitize_info(info)
-        if sanitized:
-            fmts = sanitized.get("formats", [])
-            audio_fmts = [
-                f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')} | vcodec: {f.get('vcodec')}"
-                for f in fmts if f.get("acodec") and f.get("acodec") != "none"
-            ]
-            logger.info("Available formats for %s (%d total, %d with audio):\n  %s", url, len(fmts), len(audio_fmts), "\n  ".join(audio_fmts))
-        return sanitized
+    # Log available formats first so the format table appears in logs
+    log_available_formats(url)
+
+    opts = dict(YTDL_OPTS)
+    # Remove format constraint during metadata extraction so all formats are fetched cleanly
+    opts.pop('format', None)
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            sanitized = ydl.sanitize_info(info)
+            if sanitized:
+                fmts = sanitized.get("formats", [])
+                audio_fmts = [
+                    f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')} | vcodec: {f.get('vcodec')}"
+                    for f in fmts if f.get("acodec") and f.get("acodec") != "none"
+                ]
+                logger.info("Extracted %d total formats (%d with audio) for %s:\n  %s", len(fmts), len(audio_fmts), url, "\n  ".join(audio_fmts))
+            return sanitized
+    except Exception as e:
+        logger.error("Failed to extract info for %s: %s", url, e)
+        raise
 
 async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     clean_url = clean_youtube_url(url_or_id)
