@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: discord-audio-streamer
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: discord_music_bot
+      - key: PORT
+        value: 8000

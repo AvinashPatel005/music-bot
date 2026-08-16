@@ -1,0 +1,64 @@
+# Environment Variables and Secrets (NEVER commit tokens)
+.env
+.env.local
+*.env
+
+# Python Virtual Environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs and databases
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Audio / temporary downloads
+*.mp3
+*.m4a
+*.webm
+*.opus
+*.wav
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.gemini/

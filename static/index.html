@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Ad-Free Audio Streamer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0c10;
+      --bg-card: rgba(22, 27, 34, 0.75);
+      --bg-card-hover: rgba(30, 38, 48, 0.85);
+      --accent: #6366f1;
+      --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%);
+      --accent-glow: rgba(99, 102, 241, 0.35);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.6);
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(236, 72, 153, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(10, 12, 16, 0.8);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-badge {
+      background: var(--accent-gradient);
+      padding: 0.4rem 0.65rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .docs-btn {
+      background: rgba(99, 102, 241, 0.15);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+    .docs-btn:hover {
+      background: rgba(99, 102, 241, 0.25);
+      color: #fff;
+    }
+
+    main {
+      max-width: 960px;
+      width: 100%;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      flex: 1;
+    }
+
+    .hero {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .hero h1 {
+      font-size: 2.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+
+    .gradient-text {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .input-group {
+      flex: 1;
+      position: relative;
+    }
+
+    .text-input {
+      width: 100%;
+      background: rgba(10, 12, 16, 0.6);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 0.9rem 1.1rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .text-input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .btn {
+      background: var(--accent-gradient);
+      border: none;
+      color: white;
+      font-family: inherit;
+      font-weight: 600;
+      padding: 0.9rem 1.5rem;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+      white-space: nowrap;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .btn:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: none;
+      color: var(--text-main);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .options-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1rem;
+      align-items: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .select-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .custom-select {
+      background: rgba(10, 12, 16, 0.7);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 0.45rem 0.8rem;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    /* Player Card */
+    .player-card {
+      display: none;
+      flex-direction: column;
+      gap: 1.25rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .track-details {
+      display: flex;
+      gap: 1.25rem;
+      align-items: center;
+    }
+
+    .track-thumb {
+      width: 90px;
+      height: 90px;
+      border-radius: 12px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+      background: #111;
+    }
+
+    .track-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      min-width: 0;
+    }
+
+    .track-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .track-artist {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .track-badges {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .badge-adfree {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+    }
+
+    .badge-status {
+      background: rgba(234, 179, 8, 0.15);
+      color: #fde047;
+    }
+
+    /* Waveform visualizer */
+    .visualizer {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 36px;
+      padding: 0 0.5rem;
+    }
+
+    .bar {
+      width: 4px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: height 0.15s ease;
+    }
+
+    .playing .bar {
+      animation: pulse 0.8s infinite ease-in-out;
+    }
+
+    .playing .bar:nth-child(2) { animation-delay: 0.1s; }
+    .playing .bar:nth-child(3) { animation-delay: 0.2s; }
+    .playing .bar:nth-child(4) { animation-delay: 0.3s; }
+    .playing .bar:nth-child(5) { animation-delay: 0.4s; }
+    .playing .bar:nth-child(6) { animation-delay: 0.5s; }
+    .playing .bar:nth-child(7) { animation-delay: 0.2s; }
+    .playing .bar:nth-child(8) { animation-delay: 0.4s; }
+    .playing .bar:nth-child(9) { animation-delay: 0.1s; }
+    .playing .bar:nth-child(10) { animation-delay: 0.3s; }
+
+    @keyframes pulse {
+      0%, 100% { height: 6px; }
+      50% { height: 32px; background: #ec4899; }
+    }
+
+    /* Custom audio container */
+    .audio-wrapper {
+      background: rgba(10, 12, 16, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.75rem;
+    }
+
+    audio {
+      width: 100%;
+      outline: none;
+    }
+
+    /* Search Results */
+    .search-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .search-item {
+      background: rgba(10, 12, 16, 0.5);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .search-item:hover {
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+      border-color: var(--border-focus);
+    }
+
+    .search-thumb {
+      width: 100%;
+      aspect-ratio: 16/9;
+      object-fit: cover;
+      background: #111;
+    }
+
+    .search-item-body {
+      padding: 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      flex: 1;
+    }
+
+    .search-item-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .search-item-uploader {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .endpoint-preview {
+      background: rgba(10, 12, 16, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem 1.1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: var(--text-main);
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: inherit;
+      white-space: nowrap;
+      margin-left: 1rem;
+    }
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .loader {
+      display: none;
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-radius: 50%;
+      border-top-color: var(--accent);
+      animation: spin 0.8s ease-in-out infinite;
+      margin-bottom: 0.5rem;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .alert {
+      padding: 0.9rem 1.2rem;
+      border-radius: 12px;
+      font-size: 0.9rem;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .alert-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-badge">⚡</div>
+      <span>YT Audio Streamer</span>
+    </div>
+    <div class="nav-links">
+      <a href="/docs" target="_blank" class="nav-link docs-btn">📖 Swagger Docs</a>
+      <a href="/redoc" target="_blank" class="nav-link">ReDoc</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Stream YouTube Audio <span class="gradient-text">Ad-Free & Live</span></h1>
+      <p>Instant real-time piped audio streaming from YouTube URLs with zero ads.</p>
+    </section>
+
+    <!-- Console Card -->
+    <section class="card">
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-url" onclick="switchTab('url')">Stream by URL</button>
+        <button class="tab-btn" id="tab-search" onclick="switchTab('search')">Search YouTube</button>
+      </div>
+
+      <!-- URL Mode -->
+      <div id="panel-url">
+        <div class="input-row">
+          <div class="input-group">
+            <input type="text" id="yt-url" class="text-input" placeholder="Paste YouTube URL or ID (e.g. https://www.youtube.com/watch?v=...)" value="https://www.youtube.com/watch?v=jfKfPfyJRdk">
+          </div>
+          <button class="btn" id="btn-play" onclick="startStreamFromInput()">
+            <span>▶ Play Audio</span>
+          </button>
+          <button class="btn btn-secondary" onclick="downloadFromInput()">
+            <span>⬇ Download</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search Mode -->
+      <div id="panel-search" style="display: none;">
+        <div class="input-row">
+          <div class="input-group">
+            <input type="text" id="yt-search-query" class="text-input" placeholder="Search song, artist, podcast or video title..." onkeypress="handleSearchKey(event)">
+          </div>
+          <button class="btn" onclick="executeSearch()">
+            <span>🔍 Search</span>
+          </button>
+        </div>
+        <div id="search-results" class="search-grid"></div>
+      </div>
+
+      <!-- Options -->
+      <div class="options-bar">
+        <div class="select-wrapper">
+          <span>Format:</span>
+          <select id="audio-format" class="custom-select">
+            <option value="mp3" selected>MP3 (.mp3)</option>
+            <option value="aac">AAC (.aac)</option>
+            <option value="m4a">M4A (.m4a)</option>
+            <option value="opus">Opus (.opus)</option>
+            <option value="ogg">Ogg Vorbis (.ogg)</option>
+            <option value="wav">WAV (.wav)</option>
+          </select>
+        </div>
+
+        <div class="select-wrapper">
+          <span>Bitrate:</span>
+          <select id="audio-bitrate" class="custom-select">
+            <option value="128k">128 kbps (Fastest)</option>
+            <option value="192k" selected>192 kbps (Standard)</option>
+            <option value="256k">256 kbps (High)</option>
+            <option value="320k">320 kbps (Ultra)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Loader & Alerts -->
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <p id="loader-text">Initializing stream pipeline...</p>
+      </div>
+
+      <div class="alert alert-error" id="error-alert"></div>
+    </section>
+
+    <!-- Player Card -->
+    <section class="card player-card" id="player-card">
+      <div class="track-details">
+        <img id="player-thumb" src="" alt="Thumbnail" class="track-thumb">
+        <div class="track-info">
+          <div class="track-title" id="player-title">Audio Stream Title</div>
+          <div class="track-artist" id="player-artist">Channel Name</div>
+          <div class="track-badges">
+            <span class="badge badge-adfree">🛡️ AD-FREE</span>
+            <span class="badge badge-status" id="badge-status">Connecting...</span>
+            <span class="badge" id="badge-format">MP3 192K</span>
+            <span class="badge" id="badge-duration">--:--</span>
+          </div>
+        </div>
+
+        <div class="visualizer" id="visualizer">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+      </div>
+
+      <div class="audio-wrapper">
+        <audio id="audio-player" controls preload="auto"></audio>
+      </div>
+
+      <div class="endpoint-preview">
+        <span id="endpoint-url">GET /api/stream?url=...</span>
+        <button class="copy-btn" onclick="copyStreamUrl()">Copy Stream URL</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    YouTube Ad-Free Audio Streaming Backend API &copy; 2026. Built with FastAPI & ffmpeg.
+  </footer>
+
+  <script>
+    let currentStreamUrl = '';
+    const audioPlayer = document.getElementById('audio-player');
+    const visualizer = document.getElementById('visualizer');
+    const badgeStatus = document.getElementById('badge-status');
+    const errorAlert = document.getElementById('error-alert');
+
+    audioPlayer.addEventListener('play', () => {
+      visualizer.classList.add('playing');
+      badgeStatus.innerText = '● LIVE STREAMING';
+      badgeStatus.style.background = 'rgba(16, 185, 129, 0.2)';
+      badgeStatus.style.color = '#6ee7b7';
+    });
+
+    audioPlayer.addEventListener('pause', () => {
+      visualizer.classList.remove('playing');
+      badgeStatus.innerText = '⏸ PAUSED';
+      badgeStatus.style.background = 'rgba(234, 179, 8, 0.15)';
+      badgeStatus.style.color = '#fde047';
+    });
+
+    audioPlayer.addEventListener('waiting', () => {
+      badgeStatus.innerText = '⏳ BUFFERING...';
+    });
+
+    audioPlayer.addEventListener('canplay', () => {
+      badgeStatus.innerText = 'READY';
+    });
+
+    audioPlayer.addEventListener('error', (e) => {
+      visualizer.classList.remove('playing');
+      badgeStatus.innerText = 'STREAM ERROR';
+      badgeStatus.style.background = 'rgba(239, 68, 68, 0.2)';
+      badgeStatus.style.color = '#fca5a5';
+      showError('Audio playback failed to decode stream. Trying standard MP3 format.');
+    });
+
+    function switchTab(mode) {
+      document.getElementById('tab-url').classList.toggle('active', mode === 'url');
+      document.getElementById('tab-search').classList.toggle('active', mode === 'search');
+      document.getElementById('panel-url').style.display = mode === 'url' ? 'block' : 'none';
+      document.getElementById('panel-search').style.display = mode === 'search' ? 'block' : 'none';
+    }
+
+    function showLoader(text) {
+      errorAlert.style.display = 'none';
+      document.getElementById('loader').style.display = 'block';
+      document.getElementById('loader-text').innerText = text;
+    }
+
+    function hideLoader() {
+      document.getElementById('loader').style.display = 'none';
+    }
+
+    function showError(msg) {
+      errorAlert.innerText = msg;
+      errorAlert.style.display = 'block';
+    }
+
+    async function startStreamFromInput() {
+      const url = document.getElementById('yt-url').value.trim();
+      if (!url) return showError('Please paste a YouTube video URL or ID');
+      await streamVideo(url);
+    }
+
+    async function streamVideo(videoUrl) {
+      const format = document.getElementById('audio-format').value;
+      const bitrate = document.getElementById('audio-bitrate').value;
+      showLoader('Fetching metadata and opening audio stream pipeline...');
+      badgeStatus.innerText = 'CONNECTING...';
+
+      try {
+        const infoRes = await fetch(`/api/info?url=${encodeURIComponent(videoUrl)}`);
+        const infoJson = await infoRes.json();
+        
+        if (!infoRes.ok || !infoJson.success) {
+          throw new Error(infoJson.detail || 'Could not fetch video metadata');
+        }
+
+        const data = infoJson.data;
+        document.getElementById('player-title').innerText = data.title;
+        document.getElementById('player-artist').innerText = data.uploader || 'YouTube Channel';
+        document.getElementById('player-thumb').src = data.thumbnail || '';
+        document.getElementById('badge-format').innerText = `${format.toUpperCase()} ${bitrate.toUpperCase()}`;
+        document.getElementById('badge-duration').innerText = data.duration_string || `${Math.floor(data.duration/60)}:${(data.duration%60).toString().padStart(2, '0')}`;
+
+        // Build streaming endpoint URL
+        const streamEndpoint = `${window.location.origin}/api/stream?url=${encodeURIComponent(videoUrl)}&format=${format}&bitrate=${bitrate}&t=${Date.now()}`;
+        currentStreamUrl = streamEndpoint;
+        
+        document.getElementById('endpoint-url').innerText = streamEndpoint;
+        document.getElementById('player-card').style.display = 'flex';
+
+        // Load stream into audio element
+        audioPlayer.pause();
+        audioPlayer.src = streamEndpoint;
+        audioPlayer.load();
+        
+        const playPromise = audioPlayer.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            console.log('Autoplay waiting for user gesture:', err);
+            badgeStatus.innerText = 'PRESS ▶ PLAY';
+          });
+        }
+      } catch (err) {
+        showError('Error: ' + err.message);
+      } finally {
+        hideLoader();
+      }
+    }
+
+    function downloadFromInput() {
+      const url = document.getElementById('yt-url').value.trim();
+      if (!url) return showError('Please enter a YouTube URL');
+      const format = document.getElementById('audio-format').value;
+      const bitrate = document.getElementById('audio-bitrate').value;
+      window.location.href = `/api/download?url=${encodeURIComponent(url)}&format=${format}&bitrate=${bitrate}`;
+    }
+
+    function handleSearchKey(e) {
+      if (e.key === 'Enter') executeSearch();
+    }
+
+    async function executeSearch() {
+      const q = document.getElementById('yt-search-query').value.trim();
+      if (!q) return showError('Please enter a search query');
+
+      showLoader(`Searching YouTube for "${q}"...`);
+      const container = document.getElementById('search-results');
+      container.innerHTML = '';
+
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=8`);
+        const json = await res.json();
+        
+        if (!res.ok) throw new Error(json.detail || 'Search failed');
+
+        json.data.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'search-item';
+          card.innerHTML = `
+            <img src="${item.thumbnail}" class="search-thumb" alt="${item.title}" loading="lazy">
+            <div class="search-item-body">
+              <div class="search-item-title">${item.title}</div>
+              <div class="search-item-uploader">${item.uploader || ''} • ${item.duration_string || ''}</div>
+            </div>
+          `;
+          card.onclick = () => {
+            document.getElementById('yt-url').value = item.url;
+            switchTab('url');
+            streamVideo(item.url);
+          };
+          container.appendChild(card);
+        });
+      } catch (err) {
+        showError('Search error: ' + err.message);
+      } finally {
+        hideLoader();
+      }
+    }
+
+    function copyStreamUrl() {
+      if (!currentStreamUrl) return;
+      navigator.clipboard.writeText(currentStreamUrl);
+      alert('Stream URL copied to clipboard!');
+    }
+  </script>
+</body>
+</html>
