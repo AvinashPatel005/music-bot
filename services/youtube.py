@@ -2,9 +2,13 @@ import os
 import re
 import base64
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional, Tuple
 import yt_dlp
 from cachetools import TTLCache
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("music_bot.youtube")
 
 # Cache for video info & search results (TTL: 1 hour)
 _info_cache = TTLCache(maxsize=1000, ttl=3600)
@@ -15,7 +19,9 @@ def get_cookiefile_path() -> Optional[str]:
     """
     Resolves cookie file from environment variable or local file for Render/Cloud deployment.
     """
+    env_name = "YOUTUBE_COOKIES" if os.getenv("YOUTUBE_COOKIES") else ("YOUTUBE_COOKIES_BASE64" if os.getenv("YOUTUBE_COOKIES_BASE64") else None)
     cookie_env = os.getenv("YOUTUBE_COOKIES") or os.getenv("YOUTUBE_COOKIES_BASE64")
+
     if cookie_env:
         cookie_path = "/tmp/youtube_cookies.txt" if os.path.exists("/tmp") else "youtube_cookies.txt"
         try:
@@ -30,12 +36,16 @@ def get_cookiefile_path() -> Optional[str]:
             
             with open(cookie_path, "w", encoding="utf-8") as f:
                 f.write(cookie_content)
+            logger.info("Using YouTube cookies from environment variable '%s' (saved to %s)", env_name, cookie_path)
             return cookie_path
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to parse/write YouTube cookies from environment variable '%s': %s", env_name, e)
 
     if os.path.exists("cookies.txt"):
+        logger.info("Using YouTube cookies from local file 'cookies.txt'")
         return "cookies.txt"
+
+    logger.info("No YouTube cookies detected (neither in env nor in local cookies.txt). Operating without cookies.")
     return None
 
 COOKIE_FILE = get_cookiefile_path()

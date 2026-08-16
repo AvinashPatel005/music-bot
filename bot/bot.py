@@ -2,6 +2,10 @@ import os
 import asyncio
 import logging
 from typing import Dict, Optional, List
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("music_bot")
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -9,9 +13,6 @@ from bot.music_player import GuildMusicPlayer, Song
 from services.youtube import is_playlist
 from services.spotify import is_spotify_url, parse_spotify_url
 import services.playlist_manager as pl_mgr
-
-logger = logging.getLogger("music_bot")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 class MusicControlWidgetView(discord.ui.View):
     """

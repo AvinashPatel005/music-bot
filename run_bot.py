@@ -1,9 +1,12 @@
 import os
 import sys
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
