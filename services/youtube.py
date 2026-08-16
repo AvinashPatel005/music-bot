@@ -43,7 +43,7 @@ COOKIE_FILE = get_cookiefile_path()
 
 # Video metadata & direct stream extraction options
 YTDL_OPTS: Dict[str, Any] = {
-    'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best',
+    'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
@@ -94,9 +94,16 @@ def is_playlist(url: str) -> bool:
     return "playlist?list=" in url or "&list=" in url or "/sets/" in url
 
 def _extract_info_sync(url: str) -> Dict[str, Any]:
-    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return ydl.sanitize_info(info)
+    try:
+        with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return ydl.sanitize_info(info)
+    except Exception:
+        # Fallback to no strict format constraint if client formats differ
+        fallback_opts = {**YTDL_OPTS, 'format': None}
+        with yt_dlp.YoutubeDL(fallback_opts) as ydl_fallback:
+            info = ydl_fallback.extract_info(url, download=False)
+            return ydl_fallback.sanitize_info(info)
 
 async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     clean_url = clean_youtube_url(url_or_id)
@@ -117,19 +124,27 @@ async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     
     formats = info.get("formats", [])
     
-    # Look for best audio-only format
-    audio_only = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") != "none"]
+    # 1. Look for audio-only streams
+    audio_only = [f for f in formats if f.get("url") and f.get("vcodec") == "none" and f.get("acodec") != "none"]
+    
+    # 2. Look for any stream with audio
+    any_audio = [f for f in formats if f.get("url") and f.get("acodec") != "none"]
+
     if audio_only:
-        # Prefer opus/webm or m4a
         opus_formats = [f for f in audio_only if f.get("ext") == "webm" or "opus" in (f.get("acodec") or "")]
         best_format = opus_formats[-1] if opus_formats else audio_only[-1]
         direct_audio_url = best_format.get("url")
         direct_audio_ext = best_format.get("ext", "webm")
+    elif any_audio:
+        best_format = any_audio[-1]
+        direct_audio_url = best_format.get("url")
+        direct_audio_ext = best_format.get("ext", "mp4")
     elif formats:
-        # Fallback to last available format
         best_format = formats[-1]
         direct_audio_url = best_format.get("url")
         direct_audio_ext = best_format.get("ext", "mp4")
+    else:
+        direct_audio_url = info.get("url")
 
     # Collect available formats summary
     for f in audio_only:
