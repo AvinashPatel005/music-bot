@@ -71,12 +71,13 @@ async def stream_audio_pipe(
     # 1. yt-dlp command to stream raw audio to stdout
     ytdl_cmd = [
         YTDL_PATH,
-        "--format", "bestaudio/best",
+        "--format", "bestaudio/ba/b/best",
         "--quiet",
         "--no-warnings",
         "--no-playlist",
         "--output", "-",
-        "--extractor-args", "youtube:player_client=android_vr,android,web",
+        "--remote-components", "ejs:github",
+        "--extractor-args", "youtube:player_client=android_vr,android,ios,web",
     ]
 
     if COOKIE_FILE:

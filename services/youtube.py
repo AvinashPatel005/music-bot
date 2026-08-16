@@ -50,9 +50,9 @@ def get_cookiefile_path() -> Optional[str]:
 
 COOKIE_FILE = get_cookiefile_path()
 
-# YTDL options using the user's cookie with JS challenge solver
+# YTDL options using the user's cookie with JS challenge solver & multi-client fallback
 YTDL_OPTS: Dict[str, Any] = {
-    'format': 'ba/b[height<=480]/b/best',
+    'format': 'bestaudio/ba/b/best',
     'format_sort': ['hasaud', 'acodec', 'abr'],
     'noplaylist': True,
     'quiet': True,
@@ -62,6 +62,11 @@ YTDL_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'geo_bypass': True,
     'remote_components': ['ejs:github'],
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android_vr', 'android', 'ios', 'web']
+        }
+    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -81,6 +86,11 @@ SEARCH_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'default_search': 'ytsearch',
     'remote_components': ['ejs:github'],
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android_vr', 'android', 'ios', 'web']
+        }
+    },
 }
 
 if COOKIE_FILE:

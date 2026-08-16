@@ -178,11 +178,12 @@ class PipedAudioSource(discord.AudioSource):
         from services.youtube import COOKIE_FILE
         ytdl_cmd = [
             YTDL_PATH,
-            "--format", "ba/b",
+            "--format", "bestaudio/ba/b/best",
             "--quiet",
             "--no-warnings",
             "--buffer-size", "64k",
             "--remote-components", "ejs:github",
+            "--extractor-args", "youtube:player_client=android_vr,android,ios,web",
             "-o", "-",
             url
         ]
