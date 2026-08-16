@@ -1,18 +1,20 @@
-import asyncio
+import os
 import re
+import base64
+import asyncio
 from typing import Dict, Any, List, Optional, Tuple
 import yt_dlp
 from cachetools import TTLCache
-
-import os
-import base64
 
 # Cache for video info & search results (TTL: 1 hour)
 _info_cache = TTLCache(maxsize=1000, ttl=3600)
 _search_cache = TTLCache(maxsize=500, ttl=1800)
 _playlist_cache = TTLCache(maxsize=200, ttl=1800)
 
-def _get_cookiefile_path() -> Optional[str]:
+def get_cookiefile_path() -> Optional[str]:
+    """
+    Resolves cookie file from environment variable or local file for Render/Cloud deployment.
+    """
     cookie_env = os.getenv("YOUTUBE_COOKIES") or os.getenv("YOUTUBE_COOKIES_BASE64")
     if cookie_env:
         cookie_path = "/tmp/youtube_cookies.txt" if os.path.exists("/tmp") else "youtube_cookies.txt"
@@ -37,9 +39,10 @@ def _get_cookiefile_path() -> Optional[str]:
         return "cookies.txt"
     return None
 
-COOKIE_FILE = _get_cookiefile_path()
+COOKIE_FILE = get_cookiefile_path()
 
-YTDL_OPTS = {
+# Video metadata & direct stream extraction options
+YTDL_OPTS: Dict[str, Any] = {
     'format': 'bestaudio[ext=webm][acodec=opus]/bestaudio[ext=m4a]/bestaudio/best',
     'noplaylist': True,
     'quiet': True,
@@ -47,23 +50,38 @@ YTDL_OPTS = {
     'extract_flat': False,
     'skip_download': True,
     'cachedir': False,
-    'default_search': 'ytsearch',
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios', 'android', 'mweb'],
-            'player_skip': ['configs', 'webpage'],
+            'player_client': ['android', 'ios', 'mweb', 'web'],
         }
     },
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
     },
 }
 
+# Dedicated options for ytsearch queries to prevent search stripping
+SEARCH_OPTS: Dict[str, Any] = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'no_warnings': True,
+    'extract_flat': 'in_playlist',
+    'skip_download': True,
+    'cachedir': False,
+    'default_search': 'ytsearch',
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+        }
+    },
+}
+
 if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
+    SEARCH_OPTS['cookiefile'] = COOKIE_FILE
 
 def clean_youtube_url(url_or_id: str) -> str:
     url_or_id = url_or_id.strip()
@@ -92,51 +110,48 @@ async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     if not info:
         raise ValueError("Could not extract video metadata.")
     
+    # Extract direct audio URL if available
     direct_audio_url = None
     direct_audio_ext = "webm"
     audio_formats = []
-    http_headers = info.get('http_headers') or YTDL_OPTS['http_headers']
+    
+    formats = info.get("formats", [])
+    
+    # Look for best audio-only format
+    audio_only = [f for f in formats if f.get("vcodec") == "none" and f.get("acodec") != "none"]
+    if audio_only:
+        # Prefer opus/webm or m4a
+        opus_formats = [f for f in audio_only if f.get("ext") == "webm" or "opus" in (f.get("acodec") or "")]
+        best_format = opus_formats[-1] if opus_formats else audio_only[-1]
+        direct_audio_url = best_format.get("url")
+        direct_audio_ext = best_format.get("ext", "webm")
+    elif formats:
+        # Fallback to last available format
+        best_format = formats[-1]
+        direct_audio_url = best_format.get("url")
+        direct_audio_ext = best_format.get("ext", "mp4")
 
-    formats = info.get('formats', [])
-    for f in formats:
-        acodec = f.get('acodec', 'none')
-        if acodec and acodec != 'none':
-            audio_formats.append({
-                'format_id': f.get('format_id'),
-                'ext': f.get('ext'),
-                'abr': f.get('abr') or f.get('tbr') or 128,
-                'acodec': acodec,
-                'asr': f.get('asr') or 48000,
-                'filesize': f.get('filesize') or f.get('filesize_approx'),
-                'url': f.get('url'),
-                'http_headers': f.get('http_headers', http_headers),
-            })
+    # Collect available formats summary
+    for f in audio_only:
+        audio_formats.append({
+            "format_id": f.get("format_id"),
+            "ext": f.get("ext"),
+            "abr": f.get("abr"),
+            "acodec": f.get("acodec"),
+            "filesize": f.get("filesize") or f.get("filesize_approx"),
+        })
 
-    if 'url' in info:
-        direct_audio_url = info['url']
-        direct_audio_ext = info.get('ext', 'webm')
-    elif audio_formats:
-        audio_formats.sort(
-            key=lambda x: (
-                x.get('abr') or 0,
-                1 if 'opus' in str(x.get('acodec', '')).lower() else 0
-            ),
-            reverse=True
-        )
-        best = audio_formats[0]
-        direct_audio_url = best.get('url')
-        direct_audio_ext = best.get('ext', 'webm')
+    # Pick high-res thumbnail
+    thumbnails = info.get("thumbnails", [])
+    thumbnail = thumbnails[-1].get("url") if thumbnails else info.get("thumbnail")
 
-    thumbnail = info.get('thumbnail')
-    if not thumbnail and info.get('thumbnails'):
-        thumbnail = info['thumbnails'][-1].get('url')
-    if not thumbnail and info.get('id'):
-        thumbnail = f"https://i.ytimg.com/vi/{info.get('id')}/hqdefault.jpg"
+    # Collect http headers needed for streaming direct url
+    http_headers = info.get("http_headers") or {}
 
     processed = {
         'id': info.get('id'),
         'title': info.get('title', 'Unknown Title'),
-        'description': (info.get('description') or '')[:500],
+        'description': info.get('description', ''),
         'duration': info.get('duration', 0),
         'duration_string': info.get('duration_string') or "0:00",
         'uploader': info.get('uploader') or info.get('channel') or "YouTube Artist",
@@ -165,97 +180,97 @@ def _extract_playlist_sync(url: str, limit: int = 100) -> Dict[str, Any]:
         return ydl.sanitize_info(info)
 
 async def get_playlist_info(url: str, limit: int = 100) -> Dict[str, Any]:
-    url = url.strip()
+    """
+    Extracts metadata and tracks list from a YouTube playlist URL.
+    """
     if url in _playlist_cache:
         return _playlist_cache[url]
 
     loop = asyncio.get_running_loop()
     info = await loop.run_in_executor(None, _extract_playlist_sync, url, limit)
-    
+
     if not info:
-        raise ValueError("Could not load playlist.")
+        raise ValueError("Could not extract playlist metadata.")
 
-    entries = info.get('entries', []) or []
-    playlist_title = info.get('title', 'YouTube Playlist')
-    uploader = info.get('uploader') or info.get('channel') or 'YouTube'
-
+    entries = info.get("entries") or []
     tracks = []
+
     for entry in entries[:limit]:
         if not entry:
             continue
-        v_id = entry.get('id')
-        if not v_id:
-            continue
-        
-        thumb = entry.get('thumbnail')
-        if not thumb and entry.get('thumbnails'):
-            thumb = entry['thumbnails'][-1].get('url')
-        if not thumb:
-            thumb = f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+        v_id = entry.get("id")
+        v_url = entry.get("url") or f"https://www.youtube.com/watch?v={v_id}"
+        if not v_url.startswith("http"):
+            v_url = f"https://www.youtube.com/watch?v={v_id}"
 
-        dur = entry.get('duration') or 0
-        mins, secs = divmod(dur, 60)
-        dur_str = f"{mins}:{secs:02d}"
+        dur = entry.get("duration") or 0
+        if dur:
+            m, s = divmod(int(dur), 60)
+            h, m = divmod(m, 60)
+            dur_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+        else:
+            dur_str = "0:00"
+
+        thumbnails = entry.get("thumbnails") or []
+        thumb = thumbnails[-1].get("url") if thumbnails else entry.get("thumbnail") or ""
 
         tracks.append({
-            'id': v_id,
-            'title': entry.get('title', 'Unknown Title'),
-            'duration': dur,
-            'duration_string': dur_str,
-            'uploader': entry.get('uploader') or uploader,
-            'thumbnail': thumb,
-            'url': f"https://www.youtube.com/watch?v={v_id}",
-            'webpage_url': f"https://www.youtube.com/watch?v={v_id}"
+            "id": v_id,
+            "title": entry.get("title", "Unknown Title"),
+            "url": v_url,
+            "webpage_url": v_url,
+            "duration": dur,
+            "duration_string": dur_str,
+            "uploader": entry.get("uploader") or entry.get("channel") or info.get("uploader") or "YouTube Artist",
+            "thumbnail": thumb,
         })
 
-    result = {
-        'title': playlist_title,
-        'uploader': uploader,
-        'count': len(tracks),
-        'tracks': tracks,
-        'webpage_url': url
+    processed = {
+        "id": info.get("id"),
+        "title": info.get("title", "YouTube Playlist"),
+        "uploader": info.get("uploader") or info.get("channel") or "Unknown Creator",
+        "webpage_url": info.get("webpage_url", url),
+        "track_count": len(tracks),
+        "tracks": tracks,
     }
-    _playlist_cache[url] = result
-    return result
 
-def _search_sync(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    search_opts = {
-        **YTDL_OPTS,
-        'extract_flat': 'in_playlist',
-    }
-    with yt_dlp.YoutubeDL(search_opts) as ydl:
-        results = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-        entries = results.get('entries', []) if results else []
+    _playlist_cache[url] = processed
+    return processed
+
+def _search_sync(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    search_query = f"ytsearch{limit}:{query}"
+    with yt_dlp.YoutubeDL(SEARCH_OPTS) as ydl:
+        info = ydl.extract_info(search_query, download=False)
+        entries = info.get('entries', []) if info else []
         
-        items = []
-        for entry in entries:
-            if not entry:
+        results = []
+        for e in entries:
+            if not e:
                 continue
-            v_id = entry.get('id')
-            thumb = entry.get('thumbnail')
-            if not thumb and entry.get('thumbnails'):
-                thumb = entry['thumbnails'][-1].get('url')
-            if not thumb and v_id:
-                thumb = f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
-
-            items.append({
+            v_id = e.get('id')
+            v_url = e.get('url') or f"https://www.youtube.com/watch?v={v_id}"
+            if not v_url.startswith("http"):
+                v_url = f"https://www.youtube.com/watch?v={v_id}"
+            
+            thumbnails = e.get('thumbnails', [])
+            thumb = thumbnails[-1].get('url') if thumbnails else e.get('thumbnail', '')
+            
+            results.append({
                 'id': v_id,
-                'title': entry.get('title'),
-                'duration': entry.get('duration'),
-                'duration_string': entry.get('duration_string'),
-                'uploader': entry.get('uploader') or entry.get('channel') or "YouTube Artist",
+                'title': e.get('title', 'Unknown Title'),
+                'url': v_url,
+                'duration': e.get('duration', 0),
+                'duration_string': e.get('duration_string') or "0:00",
+                'uploader': e.get('uploader') or e.get('channel') or "YouTube Artist",
                 'thumbnail': thumb,
-                'url': f"https://www.youtube.com/watch?v={v_id}",
-                'view_count': entry.get('view_count')
             })
-        return items
+        return results
 
-async def search_youtube(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    cache_key = f"{query}:{limit}"
-    if cache_key in _search_cache:
-        return _search_cache[cache_key]
+async def search_youtube(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    if query in _search_cache:
+        return _search_cache[query]
     
     loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(None, _search_sync, query, limit)
-    _search_cache[cache_key] = results
+    _search_cache[query] = results
     return results

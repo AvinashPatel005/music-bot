@@ -76,7 +76,8 @@ async def stream_audio_pipe(
         "--no-warnings",
         "--no-playlist",
         "--output", "-",
-        "--extractor-args", "youtube:player_client=ios,android",
+        "--extractor-args", "youtube:player_client=ios,android,tv_embedded,mweb;player_skip=configs,webpage",
+        "--user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
     ]
 
     if COOKIE_FILE:
