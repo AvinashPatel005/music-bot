@@ -175,7 +175,10 @@ class PipedAudioSource(discord.AudioSource):
 
     @classmethod
     def create(cls, url: str) -> "PipedAudioSource":
-        from services.youtube import COOKIE_FILE
+        from services.youtube import COOKIE_FILE, log_available_formats
+        import threading
+        threading.Thread(target=log_available_formats, args=(url,), daemon=True).start()
+
         ytdl_cmd = [
             YTDL_PATH,
             "--format", "bestaudio/ba/b/best",
@@ -183,12 +186,13 @@ class PipedAudioSource(discord.AudioSource):
             "--no-warnings",
             "--buffer-size", "64k",
             "--remote-components", "ejs:github",
-            "--extractor-args", "youtube:player_client=android_vr,android,ios,web",
-            "-o", "-",
-            url
         ]
         if COOKIE_FILE:
             ytdl_cmd.extend(["--cookies", COOKIE_FILE])
+        else:
+            ytdl_cmd.extend(["--extractor-args", "youtube:player_client=android_vr,android,ios,web"])
+
+        ytdl_cmd.extend(["-o", "-", url])
 
         ffmpeg_cmd = [
             FFMPEG_PATH,

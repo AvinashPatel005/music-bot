@@ -50,7 +50,7 @@ def get_cookiefile_path() -> Optional[str]:
 
 COOKIE_FILE = get_cookiefile_path()
 
-# YTDL options using the user's cookie with JS challenge solver & multi-client fallback
+# YTDL options with JS challenge solver and resilient format selector
 YTDL_OPTS: Dict[str, Any] = {
     'format': 'bestaudio/ba/b/best',
     'format_sort': ['hasaud', 'acodec', 'abr'],
@@ -62,11 +62,6 @@ YTDL_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'geo_bypass': True,
     'remote_components': ['ejs:github'],
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android_vr', 'android', 'ios', 'web']
-        }
-    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -76,6 +71,13 @@ YTDL_OPTS: Dict[str, Any] = {
 
 if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
+else:
+    # When no cookies are provided on cloud IPs, use mobile and VR endpoints
+    YTDL_OPTS['extractor_args'] = {
+        'youtube': {
+            'player_client': ['android_vr', 'android', 'ios', 'web']
+        }
+    }
 
 # Dedicated options for ytsearch queries
 SEARCH_OPTS: Dict[str, Any] = {
@@ -86,21 +88,50 @@ SEARCH_OPTS: Dict[str, Any] = {
     'cachedir': False,
     'default_search': 'ytsearch',
     'remote_components': ['ejs:github'],
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android_vr', 'android', 'ios', 'web']
-        }
-    },
 }
 
 if COOKIE_FILE:
     SEARCH_OPTS['cookiefile'] = COOKIE_FILE
+else:
+    SEARCH_OPTS['extractor_args'] = {
+        'youtube': {
+            'player_client': ['android_vr', 'android', 'ios', 'web']
+        }
+    }
+
+import shutil
+import subprocess
 
 def clean_youtube_url(url_or_id: str) -> str:
     url_or_id = url_or_id.strip()
     if re.match(r'^[a-zA-Z0-9_-]{11}$', url_or_id):
         return f"https://www.youtube.com/watch?v={url_or_id}"
     return url_or_id
+
+def log_available_formats(url_or_id: str):
+    """
+    Runs yt-dlp --list-formats for the given URL and logs the formatted table.
+    """
+    clean_url = clean_youtube_url(url_or_id)
+    cmd = [
+        shutil.which("yt-dlp") or "yt-dlp",
+        "--list-formats",
+        "--remote-components", "ejs:github",
+    ]
+    if COOKIE_FILE:
+        cmd.extend(["--cookies", COOKIE_FILE])
+    else:
+        cmd.extend(["--extractor-args", "youtube:player_client=android_vr,android,ios,web"])
+
+    cmd.append(clean_url)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        if res.stdout:
+            logger.info("yt-dlp --list-formats for %s:\n%s", clean_url, res.stdout.strip())
+        elif res.stderr:
+            logger.warning("yt-dlp --list-formats stderr for %s:\n%s", clean_url, res.stderr.strip())
+    except Exception as e:
+        logger.warning("Failed to execute yt-dlp --list-formats for %s: %s", clean_url, e)
 
 def is_playlist(url: str) -> bool:
     url = url.strip()
@@ -109,7 +140,15 @@ def is_playlist(url: str) -> bool:
 def _extract_info_sync(url: str) -> Dict[str, Any]:
     with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
         info = ydl.extract_info(url, download=False)
-        return ydl.sanitize_info(info)
+        sanitized = ydl.sanitize_info(info)
+        if sanitized:
+            fmts = sanitized.get("formats", [])
+            audio_fmts = [
+                f"ID: {f.get('format_id')} | ext: {f.get('ext')} | acodec: {f.get('acodec')} | abr: {f.get('abr')} | vcodec: {f.get('vcodec')}"
+                for f in fmts if f.get("acodec") and f.get("acodec") != "none"
+            ]
+            logger.info("Available formats for %s (%d total, %d with audio):\n  %s", url, len(fmts), len(audio_fmts), "\n  ".join(audio_fmts))
+        return sanitized
 
 async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     clean_url = clean_youtube_url(url_or_id)

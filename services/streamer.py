@@ -66,7 +66,9 @@ async def stream_audio_pipe(
     """
     fmt_config = FORMAT_MAPPING.get(output_format.lower(), FORMAT_MAPPING["mp3"])
     
-    from services.youtube import COOKIE_FILE
+    from services.youtube import COOKIE_FILE, log_available_formats
+    import threading
+    threading.Thread(target=log_available_formats, args=(youtube_url,), daemon=True).start()
 
     # 1. yt-dlp command to stream raw audio to stdout
     ytdl_cmd = [
@@ -77,11 +79,12 @@ async def stream_audio_pipe(
         "--no-playlist",
         "--output", "-",
         "--remote-components", "ejs:github",
-        "--extractor-args", "youtube:player_client=android_vr,android,ios,web",
     ]
 
     if COOKIE_FILE:
         ytdl_cmd.extend(["--cookies", COOKIE_FILE])
+    else:
+        ytdl_cmd.extend(["--extractor-args", "youtube:player_client=android_vr,android,ios,web"])
 
     ytdl_cmd.append(youtube_url)
 

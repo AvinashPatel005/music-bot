@@ -248,7 +248,8 @@ async def play_cmd(interaction: discord.Interaction, query: str):
         )
 
     query = query.strip().strip("<>")
-    await interaction.response.defer()
+    if not interaction.response.is_done():
+        await interaction.response.defer()
     player = bot.get_player(interaction.guild)
     player.text_channel = interaction.channel
 
