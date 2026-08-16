@@ -182,6 +182,7 @@ class PipedAudioSource(discord.AudioSource):
             "--quiet",
             "--no-warnings",
             "--buffer-size", "64k",
+            "--remote-components", "ejs:github",
             "-o", "-",
             url
         ]
