@@ -40,8 +40,8 @@ def get_cookiefile_path() -> Optional[str]:
 
 COOKIE_FILE = get_cookiefile_path()
 
-# Android VR client avoids JS challenges and format errors
-BASE_YTDL_OPTS: Dict[str, Any] = {
+# YTDL options using the user's cookie with JS challenge solver
+YTDL_OPTS: Dict[str, Any] = {
     'format': 'ba/b[height<=480]/b/best',
     'format_sort': ['hasaud', 'acodec', 'abr'],
     'noplaylist': True,
@@ -51,11 +51,7 @@ BASE_YTDL_OPTS: Dict[str, Any] = {
     'skip_download': True,
     'cachedir': False,
     'geo_bypass': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android_vr', 'android'],
-        }
-    },
+    'remote_components': ['ejs:github'],
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept': '*/*',
@@ -63,7 +59,6 @@ BASE_YTDL_OPTS: Dict[str, Any] = {
     },
 }
 
-YTDL_OPTS: Dict[str, Any] = dict(BASE_YTDL_OPTS)
 if COOKIE_FILE:
     YTDL_OPTS['cookiefile'] = COOKIE_FILE
 
@@ -75,12 +70,11 @@ SEARCH_OPTS: Dict[str, Any] = {
     'skip_download': True,
     'cachedir': False,
     'default_search': 'ytsearch',
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['web', 'android'],
-        }
-    },
+    'remote_components': ['ejs:github'],
 }
+
+if COOKIE_FILE:
+    SEARCH_OPTS['cookiefile'] = COOKIE_FILE
 
 def clean_youtube_url(url_or_id: str) -> str:
     url_or_id = url_or_id.strip()
@@ -93,29 +87,9 @@ def is_playlist(url: str) -> bool:
     return "playlist?list=" in url or "&list=" in url or "/sets/" in url
 
 def _extract_info_sync(url: str) -> Dict[str, Any]:
-    # 1. Try with primary options (with cookies if configured)
-    try:
-        with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
-            info = ydl.extract_info(url, download=False)
-            return ydl.sanitize_info(info)
-    except Exception:
-        pass
-
-    # 2. If cookies caused a format error / session flag, fallback immediately to BASE options without cookies
-    try:
-        with yt_dlp.YoutubeDL(BASE_YTDL_OPTS) as ydl_clean:
-            info = ydl_clean.extract_info(url, download=False)
-            return ydl_clean.sanitize_info(info)
-    except Exception:
-        pass
-
-    # 3. Final resilient fallback
-    fallback_opts = dict(BASE_YTDL_OPTS)
-    fallback_opts.pop('format', None)
-    fallback_opts.pop('format_sort', None)
-    with yt_dlp.YoutubeDL(fallback_opts) as ydl_fallback:
-        info = ydl_fallback.extract_info(url, download=False)
-        return ydl_fallback.sanitize_info(info)
+    with yt_dlp.YoutubeDL(YTDL_OPTS) as ydl:
+        info = ydl.extract_info(url, download=False)
+        return ydl.sanitize_info(info)
 
 async def get_video_info(url_or_id: str) -> Dict[str, Any]:
     clean_url = clean_youtube_url(url_or_id)
@@ -198,7 +172,7 @@ async def get_video_info(url_or_id: str) -> Dict[str, Any]:
 
 def _extract_playlist_sync(url: str, limit: int = 100) -> Dict[str, Any]:
     opts = {
-        **BASE_YTDL_OPTS,
+        **YTDL_OPTS,
         'noplaylist': False,
         'extract_flat': 'in_playlist',
     }

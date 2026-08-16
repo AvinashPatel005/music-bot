@@ -176,9 +176,7 @@ class PipedAudioSource(discord.AudioSource):
         from services.youtube import COOKIE_FILE
         ytdl_cmd = [
             YTDL_PATH,
-            "--extractor-args", "youtube:player_client=android_vr,android",
-            "--format", "bestaudio/best",
-            "--quiet",
+            "--format", "ba/b",
             "--no-warnings",
             "-o", "-",
             url
@@ -341,17 +339,8 @@ class GuildMusicPlayer:
             self.voice_client = None
 
     def _create_audio_source(self, song: Song) -> discord.AudioSource:
-        headers_str = "".join(f"{k}: {v}\r\n" for k, v in (song.http_headers or {}).items())
-        before_opts = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-        if headers_str:
-            before_opts += f' -headers "{headers_str}"'
-
-        raw_source = discord.FFmpegPCMAudio(
-            song.direct_audio_url,
-            before_options=before_opts,
-            options=FFMPEG_AUDIO_OPTS,
-            executable=FFMPEG_PATH
-        )
+        target_url = song.webpage_url or song.url
+        raw_source = PipedAudioSource.create(target_url)
         return discord.PCMVolumeTransformer(raw_source, volume=self.volume)
 
     async def play_next(self):
